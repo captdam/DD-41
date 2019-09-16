@@ -1,5 +1,7 @@
-# DD-40
-University of Windsor Electrical and Computer Engineering Undergraduate Capstone Project 2019 - Remotely Operated Underwater Vehicle
+# DD-41
+~~University of Windsor Electrical and Computer Engineering Undergraduate Capstone Project 2019 - Remotely Operated Underwater Vehicle~~
+
+University of Windsor ROV Competition Project - Remotely Operated Underwater Vehicle DD-41.
 
 # About this project
 
