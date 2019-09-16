@@ -1,0 +1,8 @@
+*
+
+!MainController/
+
+!MainController/*.c
+!MainController/*.h
+
+!.gitignore
