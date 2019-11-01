@@ -28,7 +28,7 @@ volatile uint8_t exchangeEventTimer, uartBlankTimer; //Exchange packet every 40m
 volatile uint8_t txBufferSwapRequest, rxBufferSwapRequest;
 
 void initUART() {
-	UBRR0 = RC_CLOCK_FREQ/16/BAUDRATE - 1;
+	UBRR0 = CPU_FREQ/16/BAUDRATE - 1;
 	UCSR0B = (1<<RXCIE0) | (1<<TXCIE0) | (1<<RXEN0) | (1<<TXEN0); //Enable Tx, Rx, Tx interrupt and Rx interrupt
 	UCSR0C = (0<<USBS0) | (3<<UCSZ00); //Async USART (UART), no parity, 1 stop bit, 8 bits data
 	txPointer = 0;

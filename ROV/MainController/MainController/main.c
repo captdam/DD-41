@@ -18,6 +18,7 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. ROV-side main cont
 /************************************************************************/
 
 
+
 /************************************************************************/
 /* ROM consts, lookup tables                                            */
 /************************************************************************/
@@ -76,36 +77,82 @@ uint16_t b2h(uint8_t binary) {
 
 // MAIN ROUTINES ---------------------------------------------------------
 
+struct PIDdata {
+	float uLast;
+	float errLast1, errLast2;
+};
+
+float pid(struct PIDdata *plant, float err, float p, float i, float d) {
+	float u = plant->uLast + p*(1+i+d) * err - p*(1+2*d) * plant->errLast1 + p*d*plant->errLast2;
+	plant->errLast2 = plant->errLast1;
+	plant->errLast1 = err;
+	plant->uLast = u;
+	return u;
+}
+
 int main() {
 	//Init I/O
 	DDRD = 0xFF;
 	DDRC = 0x00;
 	DDRB = 0xFF;
 	
+	//Init pref
 	initUART();
 	initADC();
 	initPPM();
 
+	//Init communication system
 	uint8_t txPacket[32], rxPacket[32];
 	txPacket[31] = pgm_read_word(&( SOFTWARE_INFO[0] ));
-	
-	//Receive cmd from PC
+
+	txPacket[0] =  'A';
+	txPacket[1] =  'D';
+	txPacket[2] =  'C';
+	txPacket[3] =  ' ';
+	txPacket[4] =  'V';
+	txPacket[5] =  'o';
+	txPacket[6] =  'l';
+	txPacket[7] =  't';
+	txPacket[9] =  'a';
+	txPacket[9] =  'g';
+	txPacket[10] = 'e';
+	txPacket[11] = ' ';
+	txPacket[12] = 'r';
+	txPacket[13] = 'e';
+	txPacket[14] = 'a';
+	txPacket[15] = 'd';
+	txPacket[16] = 'i';
+	txPacket[17] = 'n';
+	txPacket[18] = 'g';
+	txPacket[19] = ':';
+	txPacket[20] = ' ';
+	txPacket[21] = '9';
+	txPacket[22] = '.';
+	txPacket[23] = '9';
+	txPacket[24] = '9';
+	txPacket[25] = 'V';
+	txPacket[26] = ' ';
+	txPacket[27] = ' ';
+	txPacket[28] = ' ';
+	txPacket[29] = ' ';
+	txPacket[30] = ' ';
+	txPacket[31] = ' ';
 	initSysTimer();
+
 	sei();
 	for(;;) {
-		//Send data
+		//Get ADC
 		uint16_t adcValue = getADC(0);
-		uint16_t adcStringHigh = b2h(adcValue>>8);
-		uint16_t adcStringLow = b2h(adcValue&0xFF);
+		float adcVoltage = adcValue * 4.96 /1024.0;
+
+		uint16_t adcVoltageInt = (uint16_t)( adcVoltage * 100 ); //Range 0 - 500
+		uint8_t v1Char = adcVoltageInt % 10;
+		uint8_t v10Char = adcVoltageInt / 10 % 10;
+		uint8_t v100Char = adcVoltageInt / 100;
 		
-		txPacket[0] = adcStringHigh >> 8;
-		txPacket[1] = adcStringHigh & 0xFF;
-		txPacket[2] = adcStringLow >> 8;
-		txPacket[3] = adcStringLow & 0xFF;
-		txPacket[4] = 0;
-		txPacket[5] = rxPacket[0]-'0';
-		txPacket[6] = rxPacket[1]-'0';
-		txPacket[7] = rxPacket[2]-'0';
+		txPacket[21] = v100Char + '0';
+		txPacket[23] = v10Char + '0';
+		txPacket[24] = v1Char + '0';
 		placePacket(txPacket);
 
 		//Get data
