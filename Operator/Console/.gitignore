@@ -1,8 +1,8 @@
 *
 
-!MainController/
+!Console/
 
-!MainController/*.c
-!MainController/*.h
+!Console/*.c
+!Console/*.h
 
 !.gitignore
