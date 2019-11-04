@@ -2,8 +2,8 @@
 
 //#include "spi.c"
 
-#define OSD_CS_PORT PORTD
-#define OSD_CS_PING 4
+#define OSD_CS_PORT PORTB
+#define OSD_CS_PING 1
 
 uint8_t accessDataOSD(uint8_t data);
 uint8_t accessAddrDataOSD(uint8_t addr, uint8_t data);

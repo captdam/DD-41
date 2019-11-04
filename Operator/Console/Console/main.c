@@ -78,28 +78,20 @@ uint16_t b2h(uint8_t binary) {
 
 // MAIN ROUTINES ---------------------------------------------------------
 
-void writeSPI(uint8_t addr, uint8_t data) {
-	PORTD &= ~(1<<4); //CS select
-	shiftSPIMaster(addr);
-	shiftSPIMaster(data);
-	PORTD |= (1<<4); //CS non-selected
-}
-
-
 //Init hardwares
 int main() {
 	//Init I/O
-	DDRD = 0xFF;
-	DDRC = 0x00;
-	DDRB = 0xFF;
+	DDRD = 0x00; //Digital in
+	DDRC = 0x00; //ADC
+	DDRB = 0xFF; //SPI CS, System status output
 
-	PORTD |= (1<<4); //CS = 1, non-selected
+	PORTB |= (1<<2) | (1<<1); //CS = 1, non-selected
 	
 	//Init pref
 	initUART();
 	initADC();
 	initSPIMaster();
-	sendSerialSync(0x57);
+	for (uint8_t i = 0; i < 25; i++) _delay_loop_2(65535); //Waiting for external device booting
 
 	//Init communication system
 	uint8_t txPacket[32], rxPacket[32];
@@ -139,7 +131,29 @@ int main() {
 	}*/
 
 
-	while(1);
+	for (;;) {
+		uint16_t j[4];
+		j[0] = getADC(0);
+		j[1] = getADC(1);
+		j[2] = getADC(2);
+		j[3] = getADC(3);
+
+		uint8_t display[] = "xxxx xxxx xxxx xxxx";
+
+
+		for (uint8_t i = 0; i < 4; i++) {
+			display[ i*5 + 0 ] = j[i] / 1000 + '0';
+			display[ i*5 + 1 ] = j[i] / 100 % 10 + '0';
+			display[ i*5 + 2 ] = j[i] / 10 % 10 + '0';
+			display[ i*5 + 3 ] = j[i] % 10 + '0';
+		}
+
+		for (uint8_t i = 0; i < sizeof(display) - 1; i++) display[i] = charEncodeOSD(display[i]);
+		writeSringOSD(8, 0, display, sizeof(display) - 1);
+
+		PINB = (1<<0);
+	}
+	
 	return 0;
 }
 
