@@ -13,6 +13,17 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. Operator-side cons
 
 #define CPU_FREQ	16000000
 
+#define AP_MAX_DEPTH	5000		//in cm, step 10 cm
+
+#define OSD_LINE_PROJECTNAME 0
+#define OSD_LINE_APIND 0
+#define OSD_LINE_BATTERY 1
+#define OSD_LINE_DEPTH 2
+#define OSD_LINE_PITCH 3
+#define OSD_LINE_COMPASS 4
+#define OSD_LINE_JOYSTICK 10
+#define OSD_LINE_CONFIG 11
+
 
 /************************************************************************/
 /* Application SFRs                                                     */
@@ -28,10 +39,15 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. Operator-side cons
 /* Code segment                                                         */
 /************************************************************************/
 
+// Base util
 #include "../../../Communication/Software/communication.c"
-#include "adc.c"
-#include "spi.c"
+#include "../../../AVR_Common/adc.c"
+#include "../../../AVR_Common/spi.c"
+
+// Functional util
 #include "osd.c"
+#include "../../../AVR_Common/string.c"
+
 
 
 // UART ------------------------------------------------------------------
@@ -78,68 +94,290 @@ uint16_t b2h(uint8_t binary) {
 
 // MAIN ROUTINES ---------------------------------------------------------
 
-void writeSPI(uint8_t addr, uint8_t data) {
-	PORTD &= ~(1<<4); //CS select
-	shiftSPIMaster(addr);
-	shiftSPIMaster(data);
-	PORTD |= (1<<4); //CS non-selected
-}
-
-
 //Init hardwares
 int main() {
 	//Init I/O
-	DDRD = 0xFF;
-	DDRC = 0x00;
-	DDRB = 0xFF;
+	DDRD = 0x00; //Digital in
+	DDRC = 0x00; //ADC
+	DDRB = 0xFF; //SPI CS, System status output
+	for (uint8_t i = 0; i < 25; i++) _delay_loop_2(65535); //Waiting for external device booting
 
-	PORTD |= (1<<4); //CS = 1, non-selected
+	PORTB |= (1<<2) | (1<<1); //CS = 1, non-selected
 	
 	//Init pref
 	initUART();
 	initADC();
 	initSPIMaster();
-	sendSerialSync(0x57);
 
+	//Init OSD module
+	initOSD();
+	clearOSD();
+	
+	uint8_t projectName[] = "DD-41";
+	stringEncodeOSD(projectName);
+	writeSringOSD(OSD_LINE_PROJECTNAME, 0, projectName);
+	
 	//Init communication system
 	uint8_t txPacket[32], rxPacket[32];
 	txPacket[31] = pgm_read_word(&( SOFTWARE_INFO[0] ));
-	placePacket(txPacket);
-//	initSysTimer();
+	initSysTimer();
 
-//	sei();
+	//System task memory
+	uint8_t digitalInputLast = 0x00; //Software PCINT
+	
+	uint8_t menuIndex = 0; //Press key menu
+	
+	uint8_t motorPowerIndex[4] = {100, 100, 100, 100}; //Engine output = joystick * this (range 0 to 100)
+	
+	uint8_t apEnable = 0; //Auto pilot enable/disable
+	uint16_t apDepth = 0; //Range 0 to AP_MAX_DEPTH, in cm
+	uint16_t apCompass = 0; //Range 0 to 359, in degree
+	int8_t apPitch = 0; //Range +/- 89, in degree
 
-	initOSD();
-	
-	uint8_t line0[] = "OSD TEST";
-	for (uint8_t i = 0; i < sizeof(line0) - 1; i++) line0[i] = charEncodeOSD(line0[i]);
-	writeSringOSD(0, 5, line0, sizeof(line0) - 1);
-	
-	uint8_t line1[] = "ROV B. V. 12.7V";
-	for (uint8_t i = 0; i < sizeof(line1) - 1; i++) line1[i] = charEncodeOSD(line1[i]);
-	writeSringOSD(1, 0, line1, sizeof(line1) - 1);
-	
-	uint8_t line2[] = "Ctl B. V. 14.2V";
-	for (uint8_t i = 0; i < sizeof(line2) - 1; i++) line2[i] = charEncodeOSD(line2[i]);
-	writeSringOSD(2, 0, line2, sizeof(line2) - 1);
-	
-	uint8_t line3[] = "P  13.2  R -27.5";
-	for (uint8_t i = 0; i < sizeof(line3) - 1; i++) line3[i] = charEncodeOSD(line3[i]);
-	writeSringOSD(3, 0, line3, sizeof(line3) - 1);
-	
-	uint8_t line4[] = "A/P activated";
-	for (uint8_t i = 0; i < sizeof(line4) - 1; i++) line4[i] = charEncodeOSD(line4[i]);
-	writeSringBlinkOSD(11, 0, line4, sizeof(line4) - 1);
-	
-/*	for (;;) {
-		for (uint8_t i = 0; i < 25; i++) _delay_loop_2(65535);
-		turnOnOSD();
-		for (uint8_t i = 0; i < 25; i++) _delay_loop_2(65535);
-		turnOffOSD();
-	}*/
+	//System task start
+	sei();
+
+	//System task loop
+	for (;;) {
+		
+		/************************************************************************/
+		/* 1 - Get ROV data                                                     */
+		/************************************************************************/
+
+		fetchPacket(rxPacket);
+		uint16_t depth =		(rxPacket[1]<<8) | rxPacket[0];
+		uint16_t pitch =		(rxPacket[3]<<8) | rxPacket[2];
+		uint16_t compass =		(rxPacket[5]<<8) | rxPacket[4];
+		uint16_t temperature =		(rxPacket[7]<<8) | rxPacket[6];
+		uint16_t voltage =		(rxPacket[9]<<8) | rxPacket[8];
+
+		/************************************************************************/
+		/* 2 - Display ROV data on OSD                                          */
+		/************************************************************************/
+
+		//Display ROV battery voltage
+		uint8_t displayVoltage[] = "ROV Bat --.--V";
+		stringEncodeOSD(displayVoltage);
+
+		uint16_t displayVoltageHigh = bcd2osd( voltage >> 8 );
+		displayVoltage[8] = displayVoltageHigh >> 8;
+		displayVoltage[9] = displayVoltageHigh & 0xFF;
+
+		uint16_t displayVoltageLow = bcd2osd( voltage & 0xFF );
+		displayVoltage[11] = displayVoltageLow >> 8;
+		displayVoltage[12] = displayVoltageLow & 0xFF;
+		writeSringOSD(OSD_LINE_BATTERY, 0, displayVoltage);
+		
+		//Display ROV depth
+		uint8_t displayDepth[] = "Depth --.--m";
+		stringEncodeOSD(displayDepth);
+		
+		uint16_t displayDepthHigh = bcd2osd( depth >> 8 );
+		displayDepth[6] = displayDepthHigh >> 8;
+		displayDepth[7] = displayDepthHigh & 0xFF;
+		
+		uint16_t displayDepthLow = bcd2osd( depth & 0xFF );
+		displayDepth[9] = displayDepthLow >> 8;
+		displayDepth[10] = displayDepthLow & 0xFF;
+		writeSringOSD(OSD_LINE_DEPTH, 0, displayDepth);
+		
+		/************************************************************************/
+		/* 3.1 - Get user input (joystick)                                      */
+		/************************************************************************/
+
+		uint16_t joystick[4];
+		uint8_t displayJoystick[20];
+		for (uint8_t i = 0; i < 4; i++) {
+			joystick[i] = getADC(i);
+
+			////////////////////////////////////////////////////////////////////////// For joystick curve dev use
+			uint16_t displayJoystickTempBCD, displayJoystickTempOSD;
+			displayJoystickTempBCD = uint2bcd(joystick[i]);
+			displayJoystickTempOSD = bcd2osd( displayJoystickTempBCD >> 8 );
+			displayJoystick[ i * 5     ] = displayJoystickTempOSD >> 8;
+			displayJoystick[ i * 5 + 1 ] = displayJoystickTempOSD & 0xFF;
+			displayJoystickTempOSD = bcd2osd( displayJoystickTempBCD & 0xFF );
+			displayJoystick[ i * 5 + 2 ] = displayJoystickTempOSD >> 8;
+			displayJoystick[ i * 5 + 3 ] = displayJoystickTempOSD & 0xFF;
+		}
+		displayJoystick[19] = 0xFF;
+		writeSringOSD(OSD_LINE_JOYSTICK, 0, displayJoystick);
+
+		/************************************************************************/
+		/* 3.2 - Get user input (press key)                                     */
+		/************************************************************************/
+
+		//Scan user input
+		int8_t menuAction = 0;
+		uint8_t digitalInput = (~PIND & 0b11111100);
+		if (digitalInputLast != digitalInput) { //Key pressed or released (Pin Change)
+			switch (digitalInput) {
+				case (1<<7): menuIndex++;      break; //Menu +
+				case (1<<6): menuAction =  10; break; //Value +10
+				case (1<<5): menuAction =  1;  break; //Value +
+				case (1<<4): menuAction = -1;  break; //Value -
+				case (1<<3): menuAction = -10; break; //Value -10
+				case (1<<2): menuIndex--;      break; //Menu -
+				default:                       break; //Multiple key is not allowed
+			}
+		}
+		digitalInputLast = digitalInput;
+		
+		//Display current menu element and value under that element
+		menuIndex = menuIndex & 0b00000111; //There are 8 values
+
+		// 0 - A/P enable
+		if (!menuIndex) {
+			//If any key pressed, toggle
+			if (menuAction)
+				apEnable = ( apEnable + 1 ) & 1; 
+				
+			//Display Value: "ON or ""OFF"
+			if (apEnable) {
+				uint8_t lineMenu[30] = "A/P Ctrl ON                  ";
+				stringEncodeOSD(lineMenu);
+				writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+
+				uint8_t apline[30] = "A/P Activated";
+				stringEncodeOSD(apline);
+				writeSringBlinkOSD(OSD_LINE_APIND, 15, apline);
+			}
+			else {
+				uint8_t lineMenu[30] = "A/P Ctrl OFF                 ";
+				stringEncodeOSD(lineMenu);
+				writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+
+				uint8_t apline[30] = "A/P Idle     ";
+				stringEncodeOSD(apline);
+				writeSringOSD(OSD_LINE_APIND, 15, apline);
+			}
+
+		}
+
+		// 1 - A/P Depth
+		else if (menuIndex == 1) {
+			apDepth += menuAction * 10; //Depth = xx.xxm, step = 0.10m
+			if (apDepth > AP_MAX_DEPTH && apDepth < AP_MAX_DEPTH + 500) //Too deep
+				apDepth = AP_MAX_DEPTH;
+			else if (apDepth > AP_MAX_DEPTH) //Unsigned int downflow
+				apDepth = 0;
+
+			uint8_t lineMenu[30] = "A/P Depth --.--m             ";
+			stringEncodeOSD(lineMenu);
+			uint16_t apDepthBCD = uint2bcd(apDepth);
+			
+			uint16_t apDepthDisplayHigh = bcd2osd(apDepthBCD >> 8);
+			lineMenu[10] = apDepthDisplayHigh >> 8;
+			lineMenu[11] = apDepthDisplayHigh & 0xFF;
+			
+			uint16_t apDepthDisplayLow = bcd2osd(apDepthBCD & 0xFF);
+			lineMenu[13] = apDepthDisplayLow >> 8;
+			lineMenu[14] = apDepthDisplayLow & 0xFF;
+			writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+		}
+
+		// 2 - A/P Pitch
+		else if (menuIndex == 2) {
+			apPitch += menuAction; //Depth = xx.xxm, step = 0.10m
+			if (apPitch > 89)
+				apPitch = 89;
+			else if (apPitch < -89)
+				apPitch = -89;
+
+			uint8_t lineMenu[30] = "A/P Pitch --' ----           ";
+			stringEncodeOSD(lineMenu);
+
+			if (apPitch == 0) { //"00' FLAT"
+				lineMenu[10] = 0x0A;
+				lineMenu[11] = 0x0A;
+				lineMenu[14] = 0x10;
+				lineMenu[15] = 0x16;
+				lineMenu[16] = 0x0B;
+				lineMenu[17] = 0x1E;
+			}
+			else if (apPitch > 0) { //"xx' UP  "
+				uint8_t diffBCD = uint2bcd( (uint8_t)apPitch );
+				uint16_t diffOSD = bcd2osd(diffBCD);
+				lineMenu[10] = diffOSD >> 8;
+				lineMenu[11] = diffOSD & 0xFF;
+				lineMenu[14] = 0x1F;
+				lineMenu[15] = 0x1A;
+				lineMenu[16] = 0x00;
+				lineMenu[17] = 0x00;
+			}
+			else { //"xx' DOWN"
+				uint8_t diffBCD = uint2bcd( (uint8_t)(-apPitch) );
+				uint16_t diffOSD = bcd2osd(diffBCD);
+				lineMenu[10] = diffOSD >> 8;
+				lineMenu[11] = diffOSD & 0xFF;
+				lineMenu[14] = 0x0E;
+				lineMenu[15] = 0x19;
+				lineMenu[16] = 0x21;
+				lineMenu[17] = 0x18;
+			}
+
+			writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+		}
+
+		// 3 - A/P Compass
+		else if (menuIndex == 3) {
+			apCompass += menuAction; //Depth = xx.xxm, step = 0.10m
+			if (apCompass > 359 && apCompass < 600) //Overflow
+				apCompass -= 360;
+			else if (apCompass > 359) //Downflow
+				apCompass += 360;
+
+			uint8_t lineMenu[30] = "A/P Compass ---' -           ";
+			stringEncodeOSD(lineMenu);
+
+			uint16_t apCompassBCD = uint2bcd(apCompass);
+			uint8_t apCompassHighOSD = bcd2osd(apCompassBCD >> 8);
+			uint16_t apCompassLowOSD = bcd2osd(apCompassBCD & 0xFF);
+			lineMenu[12] = apCompassHighOSD;
+			lineMenu[13] = apCompassLowOSD >> 8;
+			lineMenu[14] = apCompassLowOSD & 0xFF;
+			
+			if	(apCompass >  45 && apCompass <= 135)	lineMenu[17] = 0x0F; //"E"
+			else if	(apCompass > 135 && apCompass <= 225)	lineMenu[17] = 0x1D; //"S"
+			else if	(apCompass > 225 && apCompass <= 315)	lineMenu[17] = 0x21; //"W"
+			else						lineMenu[17] = 0x18; //"N"
+			
+			writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+		}
+
+		// 4~7 - Motor power index
+		else {
+			uint8_t mi =  menuIndex - 4;
+			motorPowerIndex[mi] += menuAction;
+			
+			if ( motorPowerIndex[mi] > 100 && motorPowerIndex[mi] < 200 ) //Overflow
+				motorPowerIndex[mi] = 100;
+			else if ( motorPowerIndex[mi] > 100) //Downflow
+				motorPowerIndex[mi] = 0;
+
+			uint8_t lineMenu[30] = "Mtr P Idx - ---              ";
+			stringEncodeOSD(lineMenu);
+
+			uint8_t motorIndexOSD = bcd2osd(mi);
+			uint16_t motorPowerIndexBCD = uint2bcd(motorPowerIndex[mi]);
+			uint8_t motorPowerIndexHighOSD = bcd2osd(motorPowerIndexBCD >> 8);
+			uint16_t motorPowerIndexLowOSD = bcd2osd(motorPowerIndexBCD & 0xFF);
+			lineMenu[10] = motorIndexOSD;
+			lineMenu[12] = motorPowerIndexHighOSD;
+			lineMenu[13] = motorPowerIndexLowOSD >> 8;
+			lineMenu[14] = motorPowerIndexLowOSD & 0xFF;
+			writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+		}
 
 
-	while(1);
+
+		/************************************************************************/
+		/* 6 - End of system task loop, place Tx packet                         */
+		/************************************************************************/
+		placePacket(txPacket);
+		PINB = (1<<0); //System status output
+	}
+	
 	return 0;
 }
 

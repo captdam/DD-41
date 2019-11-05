@@ -48,9 +48,9 @@ uint8_t writeI2CMaster(uint8_t data) {
 // Read from I2C bus
 uint8_t readI2CMaster(uint8_t* data, uint8_t ack) { //Send ACK if there is any data need to be read after the current word in the current transaction
 	if (ack)
-	TWCR = (1<<TWEA) | (1<<TWINT) | (1<<TWEN); //Clear I2C finish flag (from last operation) and return ACK
+		TWCR = (1<<TWEA) | (1<<TWINT) | (1<<TWEN); //Clear I2C finish flag (from last operation) and return ACK
 	else
-	TWCR = (1<<TWINT) | (1<<TWEN); //Clear I2C finish flag (from last operation) and return NAK
+		TWCR = (1<<TWINT) | (1<<TWEN); //Clear I2C finish flag (from last operation) and return NAK
 	while ( !(TWCR & (1<<TWINT)) ); //Wait for coming data
 	*data = TWDR;
 	return TWSR;
