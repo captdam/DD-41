@@ -30,8 +30,8 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. ROV-side main cont
 
 #include "../../../Communication/Software/communication.c"
 #include "ppm.c"
-#include "adc.c"
-#include "twi.c"
+#include "../../../AVR_Common/adc.c"
+#include "../../../AVR_Common/twi.c"
 
 
 // UART ------------------------------------------------------------------
