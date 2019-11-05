@@ -1,5 +1,11 @@
 // At7456E OSD util
 
+// Interrupt during SPI data transmission may corrupt the SPI data, for example:
+//     Currently send data to device A. Interrupt, pull CS of device B low, send data to device B
+//     Because the CS of device is still low, data received by device A as well.
+// I-flag should not be enabled during init
+// After init, the user are allowed to set the I-flag. When the OSD util sending data to OSD module, the util will temperately disable I-flag
+
 //#include "spi.c"
 
 #define OSD_CS_PORT PORTB
@@ -16,16 +22,22 @@ void initOSD() {
 	accessAddrDataOSD(0x01, 0b01001100); //Flash rate
 }
 
-//Turn on or off OSD
+// Turn on or off OSD
 void turnOnOSD() {
+	cli();
 	accessAddrDataOSD(0x00, 0x08); //Turn on OSD, PAL
+	sei();
 }
 void turnOffOSD() {
+	cli();
 	accessAddrDataOSD(0x00, 0x00); //Turn off OSD
+	sei();
 }
 
 // Write a string on screen
-void writeSringOSD(uint8_t row, uint8_t col, uint8_t codedString[], uint8_t stringLength) {
+void writeSringOSD(uint8_t row, uint8_t col, uint8_t codedString[]) {
+	cli();
+	
 	/*
 	Due to hardware issue?
 	Only 28 character are able to be displayed on screen per line, although it should be 30
@@ -35,12 +47,18 @@ void writeSringOSD(uint8_t row, uint8_t col, uint8_t codedString[], uint8_t stri
 	accessAddrDataOSD(0x06, position & 0xFF);
 	accessAddrDataOSD(0x04, 0x01); //Position Auto-increment
 
-	for(uint16_t i = 0; i < 28 && i < stringLength; i++) accessDataOSD(codedString[i]);
-	accessDataOSD(0xFF); //Terminate process
+	uint8_t index = 0;
+	do {
+		accessDataOSD(codedString[index]);
+	} while( codedString[index++] != 0xFF ); //Write 0xFF to terminate
+	
+	sei();
 }
 
 // Write a string on screen with blinking
-void writeSringBlinkOSD(uint8_t row, uint8_t col, uint8_t codedString[], uint8_t stringLength) {
+void writeSringBlinkOSD(uint8_t row, uint8_t col, uint8_t codedString[]) {
+	cli();
+	
 	/*
 	Due to hardware issue?
 	Only 28 character are able to be displayed on screen per line, although it should be 30
@@ -50,21 +68,27 @@ void writeSringBlinkOSD(uint8_t row, uint8_t col, uint8_t codedString[], uint8_t
 	accessAddrDataOSD(0x06, position & 0xFF);
 	accessAddrDataOSD(0x04, 0x11); //Position Auto-increment
 
-	for(uint16_t i = 0; i < 28 && i < stringLength; i++) accessDataOSD(codedString[i]);
-	accessDataOSD(0xFF); //Terminate process
+	uint8_t index = 0;
+	do {
+		accessDataOSD(codedString[index]);
+	} while( codedString[index++] != 0xFF ); //Write 0xFF to terminate
+	
+	sei();
 }
 
 // Clear screen
 void clearOSD() {
+	cli();
 	for(uint16_t i = 0; i < 480; i++) accessDataOSD(0x00); //Space
 	accessDataOSD(0xFF);
+	sei();
 }
 
 // ASCII to OSD encoded
 #define OSD_NC 0xFB //OSD no such char
 volatile const char ASCII2OSD[] PROGMEM = {
 //	NUL	SOH	STX	ETX	EOT	ENQ	ACK	BEL	BS	HT	LF	VT	FF	CR	S0	S1
-	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,
+	0xFF,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,
 //	DLE	DC1	DC2	DC3	DC4	NAK	SYN	ETB	CAN	EM	SUB	ESC	FS	GS	RS	US
 	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,
 //	SP	!	"	#	$	%	&	'	(	)	*	+	,	-	.	/
@@ -80,8 +104,14 @@ volatile const char ASCII2OSD[] PROGMEM = {
 //	p	q	r	s	t	u	v	w	x	y	z	{	|	}	~	DEL
 	0x34,	0x35,	0x36,	0x37,	0x38,	0x39,	0x3A,	0x3B,	0x3C,	0x3D,	0x3E,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,
 };
-uint8_t charEncodeOSD (uint8_t ascii) {
+//Note: 0x00 (\0) is the endmark of string, 0xFF exits brust write mode of OSD
+uint8_t charEncodeOSD(uint8_t ascii) {
 	return pgm_read_word(&(ASCII2OSD[ascii]));
+}
+void stringEncodeOSD(uint8_t* ascii) {
+	do {
+		*ascii = pgm_read_word(&(ASCII2OSD[ *ascii ]));
+	} while (*(ascii++) != 0xFF);
 }
 
 
