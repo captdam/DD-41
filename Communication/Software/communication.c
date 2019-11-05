@@ -120,3 +120,13 @@ ISR (USART_RX_vect) {
 	uartBlankTimer = 0;
 }
 
+//////////////////////////////////////////////////////////////////////////
+
+// Code above defines the communication system on the Transport layer
+
+//////////////////////////////////////////////////////////////////////////
+
+// The following include file defines the packet structure
+// On the Application layer
+
+#include "packet.h"
