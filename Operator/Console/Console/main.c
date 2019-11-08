@@ -15,6 +15,8 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. Operator-side cons
 
 #define AP_MAX_DEPTH	5000		//in cm, step 10 cm
 
+#define CONFIG_MENUSIZE 10
+
 #define OSD_LINE_PROJECTNAME 0
 #define OSD_LINE_APIND 0
 #define OSD_LINE_BATTERY 1
@@ -122,10 +124,9 @@ int main() {
 	txPacket[31] = pgm_read_word(&( SOFTWARE_INFO[0] ));
 	initSysTimer();
 
-	//System task memory
+	//System task memory (keep after each loop)
 	uint8_t digitalInputLast = 0x00; //Software PCINT
-	
-	uint8_t menuIndex = 0; //Press key menu
+	uint8_t menuIndex = 0; //Config menu (menu element)
 	
 	uint8_t motorPowerIndex[4] = {100, 100, 100, 100}; //Engine output = joystick * this (range 0 to 100)
 	
@@ -133,6 +134,8 @@ int main() {
 	uint16_t apDepth = 0; //Range 0 to AP_MAX_DEPTH, in cm
 	uint16_t apCompass = 0; //Range 0 to 359, in degree
 	int8_t apPitch = 0; //Range +/- 89, in degree
+
+	uint8_t functionMainLight = 0, functionNaviLight = 0;
 
 	//System task start
 	sei();
@@ -145,11 +148,11 @@ int main() {
 		/************************************************************************/
 
 		fetchPacket(rxPacket);
-		uint16_t depth =		(rxPacket[1]<<8) | rxPacket[0];
-		uint16_t pitch =		(rxPacket[3]<<8) | rxPacket[2];
-		uint16_t compass =		(rxPacket[5]<<8) | rxPacket[4];
-		uint16_t temperature =		(rxPacket[7]<<8) | rxPacket[6];
-		uint16_t voltage =		(rxPacket[9]<<8) | rxPacket[8];
+		uint16_t depth =		(rxPacket[COM_PACKET_DATA_DEPTH_H]<<8) | rxPacket[COM_PACKET_DATA_DEPTH_L];
+		uint16_t pitch =		(rxPacket[COM_PACKET_DATA_PITCH_H]<<8) | rxPacket[COM_PACKET_DATA_PITCH_L];
+		uint16_t compass =		(rxPacket[COM_PACKET_DATA_COMPASS_H]<<8) | rxPacket[COM_PACKET_DATA_COMPASS_L];
+		uint16_t temperature =		(rxPacket[COM_PACKET_DATA_TEMPERATURE_H]<<8) | rxPacket[COM_PACKET_DATA_TEMPERATURE_L];
+		uint16_t voltage =		(rxPacket[COM_PACKET_DATA_VOLTAGE_H]<<8) | rxPacket[COM_PACKET_DATA_VOLTAGE_L];
 
 		/************************************************************************/
 		/* 2 - Display ROV data on OSD                                          */
@@ -224,7 +227,10 @@ int main() {
 		digitalInputLast = digitalInput;
 		
 		//Display current menu element and value under that element
-		menuIndex = menuIndex & 0b00000111; //There are 8 values
+		if (menuIndex == 0xFF)
+			menuIndex += CONFIG_MENUSIZE;
+		if (menuIndex == CONFIG_MENUSIZE)
+			menuIndex = 0;
 
 		// 0 - A/P enable
 		if (!menuIndex) {
@@ -232,7 +238,6 @@ int main() {
 			if (menuAction)
 				apEnable = ( apEnable + 1 ) & 1; 
 				
-			//Display Value: "ON or ""OFF"
 			if (apEnable) {
 				uint8_t lineMenu[30] = "A/P Ctrl ON                  ";
 				stringEncodeOSD(lineMenu);
@@ -251,12 +256,11 @@ int main() {
 				stringEncodeOSD(apline);
 				writeSringOSD(OSD_LINE_APIND, 15, apline);
 			}
-
 		}
 
-		// 1 - A/P Depth
+		// 1 - A/P Depth, step = 0.10m
 		else if (menuIndex == 1) {
-			apDepth += menuAction * 10; //Depth = xx.xxm, step = 0.10m
+			apDepth += menuAction * 10;
 			if (apDepth > AP_MAX_DEPTH && apDepth < AP_MAX_DEPTH + 500) //Too deep
 				apDepth = AP_MAX_DEPTH;
 			else if (apDepth > AP_MAX_DEPTH) //Unsigned int downflow
@@ -278,7 +282,7 @@ int main() {
 
 		// 2 - A/P Pitch
 		else if (menuIndex == 2) {
-			apPitch += menuAction; //Depth = xx.xxm, step = 0.10m
+			apPitch += menuAction;
 			if (apPitch > 89)
 				apPitch = 89;
 			else if (apPitch < -89)
@@ -321,7 +325,7 @@ int main() {
 
 		// 3 - A/P Compass
 		else if (menuIndex == 3) {
-			apCompass += menuAction; //Depth = xx.xxm, step = 0.10m
+			apCompass += menuAction;
 			if (apCompass > 359 && apCompass < 600) //Overflow
 				apCompass -= 360;
 			else if (apCompass > 359) //Downflow
@@ -346,7 +350,7 @@ int main() {
 		}
 
 		// 4~7 - Motor power index
-		else {
+		else if ( menuIndex >= 4 && menuIndex <= 7 ) {
 			uint8_t mi =  menuIndex - 4;
 			motorPowerIndex[mi] += menuAction;
 			
@@ -369,11 +373,69 @@ int main() {
 			writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
 		}
 
+		// 8 - Function - main lights
+		else if (menuIndex == 8) {
+			//If any key pressed, toggle
+			if (menuAction)
+				functionMainLight = ( functionMainLight + 1 ) & 1; 
+				
+			if (functionMainLight) {
+				uint8_t lineMenu[30] = "F M Light ON                 ";
+				stringEncodeOSD(lineMenu);
+				writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+			}
+			else {
+				uint8_t lineMenu[30] = "F M Light OFF                ";
+				stringEncodeOSD(lineMenu);
+				writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+			}
+		}
 
+		// 9 - Function - navi light
+		else {
+			if (menuAction)
+				functionNaviLight = ( functionNaviLight + 1 ) & 1; 
+				
+			if (functionNaviLight) {
+				uint8_t lineMenu[30] = "F Nav Light ON               ";
+				stringEncodeOSD(lineMenu);
+				writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+			}
+			else {
+				uint8_t lineMenu[30] = "F Nav Light OFF              ";
+				stringEncodeOSD(lineMenu);
+				writeSringOSD(OSD_LINE_CONFIG, 0, lineMenu);
+			}
+		}
 
 		/************************************************************************/
 		/* 6 - End of system task loop, place Tx packet                         */
 		/************************************************************************/
+		txPacket[COM_PACKET_CTRL_JOYSTICK0_L] = joystick[0] & 0xFF;
+		txPacket[COM_PACKET_CTRL_JOYSTICK0_H] = joystick[0] >> 8;
+		txPacket[COM_PACKET_CTRL_JOYSTICK1_L] = joystick[1] & 0xFF;
+		txPacket[COM_PACKET_CTRL_JOYSTICK1_H] = joystick[1] >> 8;
+		txPacket[COM_PACKET_CTRL_JOYSTICK2_L] = joystick[2] & 0xFF;
+		txPacket[COM_PACKET_CTRL_JOYSTICK2_H] = joystick[2] >> 8;
+		txPacket[COM_PACKET_CTRL_JOYSTICK3_L] = joystick[3] & 0xFF;
+		txPacket[COM_PACKET_CTRL_JOYSTICK3_H] = joystick[3] >> 8;
+		
+		txPacket[COM_PACKET_CTRL_MTRPOW0] = motorPowerIndex[0];
+		txPacket[COM_PACKET_CTRL_MTRPOW1] = motorPowerIndex[1];
+		txPacket[COM_PACKET_CTRL_MTRPOW2] = motorPowerIndex[2];
+		txPacket[COM_PACKET_CTRL_MTRPOW3] = motorPowerIndex[3];
+
+		
+		txPacket[COM_PACKET_CTRL_FUNCTION] =	( ( apEnable		&1) << COM_PACKET_CTRL_FUNCTION_AP )
+						|	( ( functionMainLight	&1) << COM_PACKET_CTRL_FUNCTION_ML )
+						|	( ( functionNaviLight	&1) << COM_PACKET_CTRL_FUNCTION_NL );
+						
+		txPacket[COM_PACKET_CTRL_AP_PITCH] = apPitch;
+		txPacket[COM_PACKET_CTRL_AP_COMPASS_L] = apCompass & 0xFF;
+		txPacket[COM_PACKET_CTRL_AP_COMPASS_L] = apCompass >> 8;
+		txPacket[COM_PACKET_CTRL_AP_DEPTH_H] = apDepth & 0xFF;
+		txPacket[COM_PACKET_CTRL_AP_DEPTH_H] = apDepth >> 8;
+
 		placePacket(txPacket);
 		PINB = (1<<0); //System status output
 	}
