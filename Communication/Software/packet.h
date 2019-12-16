@@ -47,6 +47,7 @@
 /* Data packet ( ROV <-- Operator )                                     */
 /************************************************************************/
 
+//Processed data
 #define COM_PACKET_DATA_DEPTH_L		0
 #define COM_PACKET_DATA_DEPTH_H		1
 #define COM_PACKET_DATA_PITCH_L		2
@@ -57,3 +58,28 @@
 #define COM_PACKET_DATA_TEMPERATURE_H	7
 #define COM_PACKET_DATA_VOLTAGE_L	8
 #define COM_PACKET_DATA_VOLTAGE_H	9
+
+//Raw data from sensors (forward compatible, may used later)
+#define COM_PACKET_DATA_MPU_AXL		10 //Accel
+#define COM_PACKET_DATA_MPU_AXH		11
+#define COM_PACKET_DATA_MPU_AYL		12
+#define COM_PACKET_DATA_MPU_AYH		13
+#define COM_PACKET_DATA_MPU_AZL		14
+#define COM_PACKET_DATA_MPU_AZH		15
+#define COM_PACKET_DATA_MPU_TEMPL	16 //Temperature
+#define COM_PACKET_DATA_MPU_TEMPH	17
+#define COM_PACKET_DATA_MPU_GXL		18 //Gyro
+#define COM_PACKET_DATA_MPU_GXH		19
+#define COM_PACKET_DATA_MPU_GYL		20
+#define COM_PACKET_DATA_MPU_GYH		21
+#define COM_PACKET_DATA_MPU_GZL		22
+#define COM_PACKET_DATA_MPU_GZH		23
+
+#define COM_PACKET_DATA_ADC1L		24
+#define COM_PACKET_DATA_ADC1H		25
+#define COM_PACKET_DATA_ADC2L		26
+#define COM_PACKET_DATA_ADC2H		27
+#define COM_PACKET_DATA_ADC3L		28
+#define COM_PACKET_DATA_ADC3H		29
+#define COM_PACKET_DATA_ADC4L		30
+#define COM_PACKET_DATA_ADC4H		31
