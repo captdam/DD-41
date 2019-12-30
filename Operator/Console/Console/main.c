@@ -81,6 +81,19 @@ int main() {
 	txPacket[31] = pgm_read_word(&( SOFTWARE_INFO[0] ));
 	initSysTimer();
 
+//	/* Rx & OSD test data
+	rxPacket[COM_PACKET_DATA_DEPTH_H]	= 1234 >> 8;
+	rxPacket[COM_PACKET_DATA_DEPTH_L]	= 1234 & 0xFF;
+	rxPacket[COM_PACKET_DATA_PITCH_H]	= 56 >> 8;
+	rxPacket[COM_PACKET_DATA_PITCH_L]	= 56 & 0xFF;
+	rxPacket[COM_PACKET_DATA_COMPASS_H]	= 250 >> 8;
+	rxPacket[COM_PACKET_DATA_COMPASS_L]	= 0250 & 0xFF;
+	rxPacket[COM_PACKET_DATA_TEMPERATURE_H]	= 4567 >> 8;
+	rxPacket[COM_PACKET_DATA_TEMPERATURE_L]	= 4567 & 0xFF;
+	rxPacket[COM_PACKET_DATA_VOLTAGE_H]	= 1236 >> 8;
+	rxPacket[COM_PACKET_DATA_VOLTAGE_L]	= 1236 & 0xFF;
+//	*/
+
 	//System task memory
 	uint8_t digitalInputLast = 0x00; //Software PCINT
 	uint8_t menuIndex = 0; //Config menu (menu element)
@@ -180,7 +193,7 @@ int main() {
 
 		//Display ROV direction (compass)
 		uint8_t displayCompass[] = "Compass ---' -";
-		stringEncodeOSD(lineMenu);
+		stringEncodeOSD(displayCompass);
 
 		uint16_t compassBCD = uint2bcd(compass);
 		uint8_t displayCompassHigh = bcd2osd(compassBCD >> 8);
@@ -194,7 +207,7 @@ int main() {
 		else if	(compass > 225 && compass <= 315)	displayCompass[13] = 0x21; //"W"
 		else						displayCompass[13] = 0x18; //"N"
 			
-		writeSringOSD(OSD_LINE_CONFIG, 0, displayCompass);
+		writeSringOSD(OSD_LINE_COMPASS, 0, displayCompass);
 
 		//Display ROV temperature
 		uint8_t displayTemperature[] = "Temp +--.--C";
