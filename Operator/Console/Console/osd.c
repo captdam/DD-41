@@ -2,9 +2,9 @@
 
 // Interrupt during SPI data transmission may corrupt the SPI data, for example:
 //     Currently send data to device A. Interrupt, pull CS of device B low, send data to device B
-//     Because the CS of device is still low, data received by device A as well.
+//     Because the CS of device A is still low, data received by device A as well.
 // I-flag should not be enabled during init
-// After init, the user are allowed to set the I-flag. When the OSD util sending data to OSD module, the util will temperately disable I-flag
+// After init, the user may to set the I-flag. When the OSD util sending data to OSD module, this util will temperately disable I-flag
 
 //#include "spi.c"
 

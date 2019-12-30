@@ -16,13 +16,13 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. Operator-side cons
 #define AP_MAX_DEPTH	5000		//in cm, step 10 cm
 
 #define CONFIG_MENUSIZE 10
-
 #define OSD_LINE_PROJECTNAME 0
 #define OSD_LINE_APIND 0
 #define OSD_LINE_BATTERY 1
 #define OSD_LINE_DEPTH 2
 #define OSD_LINE_PITCH 3
 #define OSD_LINE_COMPASS 4
+#define OSD_LINE_TEMPERATURE 5
 #define OSD_LINE_JOYSTICK 10
 #define OSD_LINE_CONFIG 11
 
@@ -49,49 +49,6 @@ volatile const char SOFTWARE_INFO[] PROGMEM = "DD-41 project. Operator-side cons
 // Functional util
 #include "osd.c"
 #include "../../../AVR_Common/string.c"
-
-
-
-// UART ------------------------------------------------------------------
-
-//Send a data, wait if buffer not empty
-void sendSerialSync(uint8_t data) {
-	while ( !(UCSR0A & (1<<UDRE0)) ); //Wait until last word send
-	UDR0 = data;
-}
-
-//Request data, wait until data arrives
-uint8_t requestSerialSync() {
-	while ( !(UCSR0A & (1<<RXC0)) ); //Wait until data received
-	return UDR0;
-}
-
-// Data format -----------------------------------------------------------
-
-//BCD to binary
-uint8_t d2b(uint8_t decimal) {
-	return (((decimal & 0xF0) >> 4 ) * 10 ) + (decimal & 0x0F); //Normalizes 10s * 10 + 1s
-}
-
-//Binary to BCD
-uint8_t b2d(uint8_t binary) {
-	return ( (binary / 10) << 4 ) | binary % 10; //10s in higher nipple, 1s in lower nipple
-}
-
-//Binary to hex string
-uint16_t b2h(uint8_t binary) {
-	uint8_t high = binary >> 4;
-	uint8_t low = binary & 0x0F;
-	if (high > 9)
-		high = high -10 + 'A';
-	else
-		high = high + '0';
-	if (low > 9)
-		low = low -10 + 'A';
-	else
-		low = low + '0';
-	return (high<<8) | low;
-}
 
 
 // MAIN ROUTINES ---------------------------------------------------------
@@ -124,7 +81,7 @@ int main() {
 	txPacket[31] = pgm_read_word(&( SOFTWARE_INFO[0] ));
 	initSysTimer();
 
-	//System task memory (keep after each loop)
+	//System task memory
 	uint8_t digitalInputLast = 0x00; //Software PCINT
 	uint8_t menuIndex = 0; //Config menu (menu element)
 	
@@ -149,7 +106,7 @@ int main() {
 
 		fetchPacket(rxPacket);
 		uint16_t depth =		(rxPacket[COM_PACKET_DATA_DEPTH_H]<<8) | rxPacket[COM_PACKET_DATA_DEPTH_L];
-		uint16_t pitch =		(rxPacket[COM_PACKET_DATA_PITCH_H]<<8) | rxPacket[COM_PACKET_DATA_PITCH_L];
+		uint8_t pitch =			rxPacket[COM_PACKET_DATA_PITCH_L]; //Range +/- 90, ignore higher byte
 		uint16_t compass =		(rxPacket[COM_PACKET_DATA_COMPASS_H]<<8) | rxPacket[COM_PACKET_DATA_COMPASS_L];
 		uint16_t temperature =		(rxPacket[COM_PACKET_DATA_TEMPERATURE_H]<<8) | rxPacket[COM_PACKET_DATA_TEMPERATURE_L];
 		uint16_t voltage =		(rxPacket[COM_PACKET_DATA_VOLTAGE_H]<<8) | rxPacket[COM_PACKET_DATA_VOLTAGE_L];
@@ -162,11 +119,12 @@ int main() {
 		uint8_t displayVoltage[] = "ROV Bat --.--V";
 		stringEncodeOSD(displayVoltage);
 
-		uint16_t displayVoltageHigh = bcd2osd( voltage >> 8 );
+		uint16_t voltageBCD = uint2bcd(voltage); //Voltage should be less than around 1500
+		uint16_t displayVoltageHigh = bcd2osd( voltageBCD >> 8 );
 		displayVoltage[8] = displayVoltageHigh >> 8;
 		displayVoltage[9] = displayVoltageHigh & 0xFF;
 
-		uint16_t displayVoltageLow = bcd2osd( voltage & 0xFF );
+		uint16_t displayVoltageLow = bcd2osd( voltageBCD & 0xFF );
 		displayVoltage[11] = displayVoltageLow >> 8;
 		displayVoltage[12] = displayVoltageLow & 0xFF;
 		writeSringOSD(OSD_LINE_BATTERY, 0, displayVoltage);
@@ -175,14 +133,92 @@ int main() {
 		uint8_t displayDepth[] = "Depth --.--m";
 		stringEncodeOSD(displayDepth);
 		
-		uint16_t displayDepthHigh = bcd2osd( depth >> 8 );
+		uint16_t depthBCD = uint2bcd(depth); //Return 9999 if exceed 99.99m
+		uint16_t displayDepthHigh = bcd2osd( depthBCD >> 8 );
 		displayDepth[6] = displayDepthHigh >> 8;
 		displayDepth[7] = displayDepthHigh & 0xFF;
 		
-		uint16_t displayDepthLow = bcd2osd( depth & 0xFF );
+		uint16_t displayDepthLow = bcd2osd( depthBCD & 0xFF );
 		displayDepth[9] = displayDepthLow >> 8;
 		displayDepth[10] = displayDepthLow & 0xFF;
 		writeSringOSD(OSD_LINE_DEPTH, 0, displayDepth);
+
+		//Display ROV pitch
+		uint8_t displayPitch[] = "Pitch --' ----";
+		stringEncodeOSD(displayPitch);
+
+		if (pitch == 0) { //"00' FLAT"
+			displayPitch[6] = 0x0A;
+			displayPitch[7] = 0x0A;
+			displayPitch[10] = 0x10;
+			displayPitch[11] = 0x16;
+			displayPitch[12] = 0x0B;
+			displayPitch[13] = 0x1E;
+		}
+		else if (pitch < 0x80) { //"xx' UP  "
+			uint8_t pitchBCD = uint2bcd(pitch); //Range +/- 90
+			uint16_t displayPitchNum = bcd2osd(pitchBCD);
+			displayPitch[6] = displayPitchNum >> 8;
+			displayPitch[7] = displayPitchNum & 0xFF;
+			displayPitch[10] = 0x1F;
+			displayPitch[11] = 0x1A;
+			displayPitch[12] = 0x00;
+			displayPitch[13] = 0x00;
+		}
+		else { //"xx' DOWN"
+			uint8_t pitchBCD = uint2bcd(0x100-pitch);
+			uint16_t displayPitchNum = bcd2osd(pitchBCD);
+			displayPitch[6] = displayPitchNum >> 8;
+			displayPitch[7] = displayPitchNum & 0xFF;
+			displayPitch[10] = 0x0E;
+			displayPitch[11] = 0x19;
+			displayPitch[12] = 0x21;
+			displayPitch[13] = 0x18;
+		}
+
+		writeSringOSD(OSD_LINE_PITCH, 0, displayPitch);
+
+		//Display ROV direction (compass)
+		uint8_t displayCompass[] = "Compass ---' -";
+		stringEncodeOSD(lineMenu);
+
+		uint16_t compassBCD = uint2bcd(compass);
+		uint8_t displayCompassHigh = bcd2osd(compassBCD >> 8);
+		uint16_t displayCompassLow = bcd2osd(compassBCD & 0xFF);
+		displayCompass[8] = displayCompassHigh;
+		displayCompass[9] = displayCompassLow >> 8;
+		displayCompass[10] = displayCompassLow & 0xFF;
+			
+		if	(compass >  45 && compass <= 135)	displayCompass[13] = 0x0F; //"E"
+		else if	(compass > 135 && compass <= 225)	displayCompass[13] = 0x1D; //"S"
+		else if	(compass > 225 && compass <= 315)	displayCompass[13] = 0x21; //"W"
+		else						displayCompass[13] = 0x18; //"N"
+			
+		writeSringOSD(OSD_LINE_CONFIG, 0, displayCompass);
+
+		//Display ROV temperature
+		uint8_t displayTemperature[] = "Temp +--.--C";
+		stringEncodeOSD(displayTemperature);
+
+		uint16_t temperatureBCD;
+		if (temperature < 0x8000) {
+			temperatureBCD = uint2bcd(temperature); //Return 99.99C if exceed
+			displayTemperature[5] = 0x00; //OSC spacc
+		}
+		else {
+			temperatureBCD = uint2bcd(0x10000-temperature); //Return -99.99C if exceed
+			displayTemperature[5] = 0x49; //OSC -
+		}
+
+		uint16_t displayTemperatureHigh = bcd2osd( temperatureBCD >> 8 );
+		displayTemperature[6] = displayTemperatureHigh >> 8;
+		displayTemperature[7] = displayTemperatureHigh & 0xFF;
+
+		uint16_t displayTemperatureLow = bcd2osd( temperatureBCD & 0xFF );
+		displayTemperature[9] = displayTemperatureLow >> 8;
+		displayTemperature[10] = displayTemperatureLow & 0xFF;
+		writeSringOSD(OSD_LINE_TEMPERATURE, 0, displayTemperature);
+
 		
 		/************************************************************************/
 		/* 3.1 - Get user input (joystick)                                      */
@@ -190,10 +226,11 @@ int main() {
 
 		uint16_t joystick[4];
 		uint8_t displayJoystick[20];
+		
 		for (uint8_t i = 0; i < 4; i++) {
-			joystick[i] = getADC(i);
+			joystick[i] = getADC(i); //10-bit (0-1023)
 
-			////////////////////////////////////////////////////////////////////////// For joystick curve dev use
+//			/* For joystick curve dev use
 			uint16_t displayJoystickTempBCD, displayJoystickTempOSD;
 			displayJoystickTempBCD = uint2bcd(joystick[i]);
 			displayJoystickTempOSD = bcd2osd( displayJoystickTempBCD >> 8 );
@@ -202,9 +239,14 @@ int main() {
 			displayJoystickTempOSD = bcd2osd( displayJoystickTempBCD & 0xFF );
 			displayJoystick[ i * 5 + 2 ] = displayJoystickTempOSD >> 8;
 			displayJoystick[ i * 5 + 3 ] = displayJoystickTempOSD & 0xFF;
+			displayJoystick[ i * 5 + 4 ] = 0x00; //OSD space
+//			*/
 		}
+
+//		/* For joystick curve dev use
 		displayJoystick[19] = 0xFF;
 		writeSringOSD(OSD_LINE_JOYSTICK, 0, displayJoystick);
+//		*/
 
 		/************************************************************************/
 		/* 3.2 - Get user input (press key)                                     */
@@ -227,9 +269,9 @@ int main() {
 		digitalInputLast = digitalInput;
 		
 		//Display current menu element and value under that element
-		if (menuIndex == 0xFF)
+		if (menuIndex == 0xFF) //Downflow
 			menuIndex += CONFIG_MENUSIZE;
-		if (menuIndex == CONFIG_MENUSIZE)
+		if (menuIndex == CONFIG_MENUSIZE) //Overflow
 			menuIndex = 0;
 
 		// 0 - A/P enable
@@ -409,8 +451,9 @@ int main() {
 		}
 
 		/************************************************************************/
-		/* 6 - End of system task loop, place Tx packet                         */
+		/* 4 - Update Tx buffer according to user input                         */
 		/************************************************************************/
+
 		txPacket[COM_PACKET_CTRL_JOYSTICK0_L] = joystick[0] & 0xFF;
 		txPacket[COM_PACKET_CTRL_JOYSTICK0_H] = joystick[0] >> 8;
 		txPacket[COM_PACKET_CTRL_JOYSTICK1_L] = joystick[1] & 0xFF;
@@ -435,6 +478,11 @@ int main() {
 		txPacket[COM_PACKET_CTRL_AP_COMPASS_L] = apCompass >> 8;
 		txPacket[COM_PACKET_CTRL_AP_DEPTH_H] = apDepth & 0xFF;
 		txPacket[COM_PACKET_CTRL_AP_DEPTH_H] = apDepth >> 8;
+		
+
+		/************************************************************************/
+		/* 5 - End of system task loop, place Tx packet                         */
+		/************************************************************************/
 
 		placePacket(txPacket);
 		PINB = (1<<0); //System status output
