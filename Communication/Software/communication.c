@@ -95,7 +95,7 @@ ISR (TIMER2_COMPA_vect) {
 }
 
 ISR (USART_TX_vect) {
-	if (txPointer < PACKETSIZE) UDR0 = txBuffer[txPointer++]; //Send data is packet is not fully send; otherwise, halt Tx
+	if (txPointer < PACKETSIZE) UDR0 = txBuffer[txPointer++]; //Send data if packet is not fully send; otherwise, halt Tx
 }
 
 ISR (USART_RX_vect) {

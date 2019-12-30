@@ -2,14 +2,14 @@
 // Both packet are 32-byte long
 
 // packet[0] will be send first, packet[31] will be the last
-// For multi-byte data, higher byte should be contained in packet[higher_index]
+// For multi-byte data, higher byte should be contained in packet[higher_index] (Little-endian)
 
 
 /************************************************************************/
-/* Control packet ( ROV --> Operator )                                  */
+/* Control packet ( ROV <-- Operator )                                  */
 /************************************************************************/
 
-//Joysticks (PPM motor/servo ctrl) -	10-bit uint
+//Joysticks (PPM motor/servo ctrl) -	10-bit int (0-1023)
 #define COM_PACKET_CTRL_JOYSTICK0_L	0
 #define COM_PACKET_CTRL_JOYSTICK0_H	1
 #define COM_PACKET_CTRL_JOYSTICK1_L	2
@@ -34,32 +34,32 @@
 //AP - Pitch -				+/-90 int
 #define COM_PACKET_CTRL_AP_PITCH	13
 
-//AP - Compass -			0~356 uint
+//AP - Compass -			0~359 uint
 #define COM_PACKET_CTRL_AP_COMPASS_L	14
 #define COM_PACKET_CTRL_AP_COMPASS_H	15
 
-//AP - Depth -				16-bit uint (*10)(cm)
+//AP - Depth -				16-bit uint (*10cm)
 #define COM_PACKET_CTRL_AP_DEPTH_L	16
 #define COM_PACKET_CTRL_AP_DEPTH_H	17
 
 
 /************************************************************************/
-/* Data packet ( ROV <-- Operator )                                     */
+/* Data packet ( ROV --> Operator )                                     */
 /************************************************************************/
 
 //Processed data
-#define COM_PACKET_DATA_DEPTH_L		0
+#define COM_PACKET_DATA_DEPTH_L		0 // 16-bit uint (*10cm)
 #define COM_PACKET_DATA_DEPTH_H		1
-#define COM_PACKET_DATA_PITCH_L		2
+#define COM_PACKET_DATA_PITCH_L		2 // +/-90 int
 #define COM_PACKET_DATA_PITCH_H		3
-#define COM_PACKET_DATA_COMPASS_L	4
+#define COM_PACKET_DATA_COMPASS_L	4 // 0~359 uint
 #define COM_PACKET_DATA_COMPASS_H	5
-#define COM_PACKET_DATA_TEMPERATURE_L	6
+#define COM_PACKET_DATA_TEMPERATURE_L	6 // 16-bit int (*0.01C)
 #define COM_PACKET_DATA_TEMPERATURE_H	7
-#define COM_PACKET_DATA_VOLTAGE_L	8
+#define COM_PACKET_DATA_VOLTAGE_L	8 // 16-bit uint (*0.01V)
 #define COM_PACKET_DATA_VOLTAGE_H	9
 
-//Raw data from sensors (forward compatible, may used later)
+//Raw data from sensors (forward compatible, may use later)
 #define COM_PACKET_DATA_MPU_AXL		10 //Accel
 #define COM_PACKET_DATA_MPU_AXH		11
 #define COM_PACKET_DATA_MPU_AYL		12
@@ -75,11 +75,7 @@
 #define COM_PACKET_DATA_MPU_GZL		22
 #define COM_PACKET_DATA_MPU_GZH		23
 
-#define COM_PACKET_DATA_ADC1L		24
-#define COM_PACKET_DATA_ADC1H		25
-#define COM_PACKET_DATA_ADC2L		26
-#define COM_PACKET_DATA_ADC2H		27
-#define COM_PACKET_DATA_ADC3L		28
-#define COM_PACKET_DATA_ADC3H		29
-#define COM_PACKET_DATA_ADC4L		30
-#define COM_PACKET_DATA_ADC4H		31
+#define COM_PACKET_DATA_ADC1		24
+#define COM_PACKET_DATA_ADC2		25
+#define COM_PACKET_DATA_ADC3		26
+#define COM_PACKET_DATA_ADC4		27
