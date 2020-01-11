@@ -2,9 +2,9 @@
 
 // Interrupt during SPI data transmission may corrupt the SPI data, for example:
 //     Currently send data to device A. Interrupt, pull CS of device B low, send data to device B
-//     Because the CS of device is still low, data received by device A as well.
+//     Because the CS of device A is still low, data received by device A as well.
 // I-flag should not be enabled during init
-// After init, the user are allowed to set the I-flag. When the OSD util sending data to OSD module, the util will temperately disable I-flag
+// After init, the user may to set the I-flag. When the OSD util sending data to OSD module, this util will temperately disable I-flag
 
 //#include "spi.c"
 
@@ -104,7 +104,7 @@ volatile const char ASCII2OSD[] PROGMEM = {
 //	p	q	r	s	t	u	v	w	x	y	z	{	|	}	~	DEL
 	0x34,	0x35,	0x36,	0x37,	0x38,	0x39,	0x3A,	0x3B,	0x3C,	0x3D,	0x3E,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,	OSD_NC,
 };
-//Note: 0x00 (\0) is the endmark of string, 0xFF exits brust write mode of OSD
+//Note: 0x00 (\0) is the endmark of string, 0xFF exits burst write mode of OSD
 uint8_t charEncodeOSD(uint8_t ascii) {
 	return pgm_read_word(&(ASCII2OSD[ascii]));
 }
