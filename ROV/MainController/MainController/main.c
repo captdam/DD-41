@@ -83,8 +83,8 @@ int main() {
 		float accelY = (float)motionStatus.accelY;
 		float accelZ = (float)motionStatus.accelZ;
 		
-		float pitch = -atan( accelX / accelZ ) / M_PI * 180.0; //tan-1(x-axis/z-axis) to degree, range -90 to 90
-//		float roll = -atan( accelY / accelZ ) / M_PI * 180.0; //tan-1(y-axis/z-axis) to degree, range -90 to 90
+		float pitch = -atan( accelY / accelZ ) / M_PI * 180.0; //tan-1(x-axis/z-axis) to degree, range -90 to 90
+//		float roll = atan( accelX / accelZ ) / M_PI * 180.0; //tan-1(y-axis/z-axis) to degree, range -90 to 90
 		
 		//Read from ADC
 		uint16_t adc0 = getADC(0);
@@ -151,10 +151,10 @@ int main() {
 		/************************************************************************/
 		
 		//Servo control
-		setPPM0(servoLeft);
-		setPPM1(servoRight);
-		setPPM2(servoHead);
-		setPPM3(servoTail);
+		setPPM0(pitch / 90.0);
+		setPPM1(pitch / 90.0);
+		setPPM2(pitch / 90.0);
+		setPPM3(pitch / 90.0);
 
 		/************************************************************************/
 		/* 5 - Update Tx buffer according to ROV status                         */

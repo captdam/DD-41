@@ -1,9 +1,9 @@
 ﻿// MPU-6050 Gyro+Accelerometer util
 
 struct mpu {
-	uint16_t accelX, accelY, accelZ;
+	int16_t accelX, accelY, accelZ;
 	uint16_t temperature;
-	uint16_t gyroX, gyroY, gyroZ;
+	int16_t gyroX, gyroY, gyroZ;
 };
 typedef struct mpu MPU;
 
